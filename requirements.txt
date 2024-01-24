@@ -3,3 +3,4 @@ python-telegram-bot
 colorama==0.4.4
 tqdm==4.62.3
 telepot
+python-dotenv
