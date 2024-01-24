@@ -4,7 +4,7 @@
 import sys
 import time
 import os
-telepot
+import telepot
 import telepot.loop
 from colorama import (Fore, init)
 from PIL import Image, ImageEnhance
