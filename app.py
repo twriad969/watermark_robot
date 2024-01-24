@@ -15,7 +15,7 @@ from datetime import datetime
 init()
 
 print(Fore.GREEN + "Starting ...\n" + Fore.RESET)
-api = "6663409312:AAHHe_KzigIf9GVMk6fsz4H6kUFJVOKxZxc"
+api = "6663409312:AAEkgkH7nK00cfjYHZhLQXGcm85DJy74yqI"
 bot = telepot.Bot(api)
 
 # Dictionary to store processed image count for each day
