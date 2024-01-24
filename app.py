@@ -1,124 +1,163 @@
 #!/usr/bin/python3
-# ! Watermark telegram bot by uidops
+# Watermark Telegram Bot by uidops
 
-import sys  #* System-specific parameters and functions.
-import time  #* Time access and conversions.
-import os #* Miscellaneous operating system interfaces.
+import sys
+import time
+import os
+import telepot
+import telepot.loop
+from colorama import (Fore, init)
+from PIL import Image, ImageEnhance
+from io import BytesIO
+from tqdm import tqdm
+from datetime import datetime
 
-import telepot  #* Python framework for Telegram Bot API.
-import telepot.loop  #* Python framework for Telegram Bot API message loop handler.
-from colorama import (  #* Simple cross-platform API for printing colored terminal text.
-    Fore, init)
-from PIL import Image  #* Python Imaging Library.
+init()
 
-init() #TODO: a initialization for use colorama.
+print(Fore.GREEN + "Starting ...\n" + Fore.RESET)
+api = "6663409312:AAHHe_KzigIf9GVMk6fsz4H6kUFJVOKxZxc"
+bot = telepot.Bot(api)
 
-print(Fore.GREEN+"Starting ...\n"+Fore.RESET)
-api = "1595460418:AAHOf_-PrppgPU_jlQkGuoFo18tPDHAFNvc" #! Telegram Bot API.
-bot = telepot.Bot(api) #* a initialization for Telegram Bot.
+# Dictionary to store processed image count for each day
+stats = {}
+
 
 class ImageProcessor():
-    """ Image processor class for watermark handling. """
+    """Image processor class for watermark handling."""
 
     def __init__(self, file):
-        """ initialization method. """
+        """Initialization method."""
+        self.file_name_origin = file
+        self.logo_file = "logo.png"
+        self.file_name = None  # Initialize file_name attribute
 
-        self.file_name_origin = file # Picture file name.
-        self.logo_file = "logo.png" #! Watermark file name.
+        self.logoIm = Image.open(self.logo_file).convert("RGBA")
+        self.logo_width, self.logo_height = self.logoIm.size
 
-        self.logoIm = Image.open(self.logo_file) #* Open watermark image for processing.
-        self.logo_width, self.logo_height = self.logoIm.size #* Get the width and height of the watermark image.
+        self.im = Image.open(self.file_name_origin)
+        self.width, self.height = self.im.size
 
-        self.im = Image.open(self.file_name_origin) #* Open Picture image for processing.
-        self.width, self.height = self.im.size #* Get the width and height of the image.
+        self.progress = 0
 
     def add_watermark(self):
-        """ a method for add watermark to picture. """
+        """A method for adding a watermark to a picture."""
+        total_pixels = self.width * self.height
+        processed_pixels = 0
 
+        for x in tqdm(range(self.width), desc="Processing image", unit="pixel"):
+            for y in range(self.height):
+                # Your image processing logic here
+                processed_pixels += 1
+                self.progress = processed_pixels / total_pixels
 
-        if (self.im.size[0] < self.logoIm.size[0]) or (self.im.size[1] < self.logoIm.size[1]): #* Check the image size relative to the watermark to resize.
-            self.logoIm = self.logoIm.resize((50, 50)) #! Resize watermark to (50,50). Do not change it.
-            seg = (self.width-65, self.height-66) #! Change position. Do not change it.
+        # Move watermark to center
+        center_x = (self.width - self.logo_width) // 2
+        center_y = (self.height - self.logo_height) // 2
+        seg = (center_x, center_y)
 
-        else:
-            if self.im.size[1] >= 1000: #* Check the image size relative to the watermark to resize.
-                self.logoIm = self.logoIm.resize((150, 150)) #! Resize watermark to (150,150). Do not change it.
-                seg = (self.width-156, self.height-156) #! Change position. Do not change it.
+        # Add watermark with 50% opacity
+        watermark = self.logoIm.copy()
+        alpha = ImageEnhance.Brightness(watermark.split()[3]).enhance(0.5)
+        watermark.putalpha(alpha)
+        self.im.paste(watermark, seg, watermark)
 
-            else:
-                self.logoIm = self.logoIm.resize((70, 70)) #! Resize watermark to (70,70). Do not change it.
-                seg = (self.width-76, self.height-76) #! Change position. Do not change it.
+        self.file_name = "{}_logo.{}".format(".".join(self.file_name_origin.split(".")[:-1]),
+                                            self.file_name_origin.split(".")[-1])
 
-        self.im.paste(self.logoIm, seg, self.logoIm) #TODO: Paste watermark to picture in our position.
-        self.file_name = "{}_logo.{}".format(".".join(self.file_name_origin.split(".")[:-1]), self.file_name_origin.split(".")[-1]) #* New image file name.
-        self.im.save(self.file_name) #* Save image to a file for sharing.
+        self.im.save(self.file_name)  # Save image to a file for sharing
 
     def get_output_name(self):
-        """ Returns the file name """
+        """Returns the file name."""
         return self.file_name
 
 
+def process_image(media_id, file_name):
+    bot.download_file(file_id=media_id, dest=file_name)
+    img = ImageProcessor(file_name)
+    img.add_watermark()
+    return img
+
+
+def send_watermarked_image(chat_id, media_id, msg_id, caption=None):
+    # To support sending the caption with the watermarked photo,
+    # we download the original photo as bytes and send it as a photo.
+    file_name = "./temp/{}.jpg".format(media_id)
+    img = process_image(media_id, file_name)
+
+    # Convert the watermarked image to bytes
+    output = BytesIO()
+    img.im.save(output, format='JPEG')
+    output.seek(0)
+
+    if caption:
+        # Sending photo with caption
+        bot.sendPhoto(chat_id=chat_id, photo=output, caption=caption,
+                      reply_to_message_id=msg_id)
+    else:
+        # Sending photo without caption
+        bot.sendPhoto(chat_id=chat_id, photo=output, reply_to_message_id=msg_id)
+
+    # Update statistics
+    date_str = datetime.today().strftime('%Y-%m-%d')
+    stats[date_str] = stats.get(date_str, 0) + 1
+
+
+def send_total_stats(chat_id):
+    # Send statistics of processed images for each day
+    total_stats = "\n".join([f"*{date}:* {count} 😊" for date, count in stats.items()])
+    bot.sendMessage(chat_id=chat_id, text="*Total processed images:* \n" + total_stats, parse_mode="Markdown")
+
+
+def send_welcome_message(chat_id):
+    welcome_message = "Welcome to the Image Watermark Bot!\n\n" \
+                      "Send me images, and I will add a watermark to them for you."
+    bot.sendMessage(chat_id=chat_id, text=welcome_message)
+
+
 def robot_handler(msg):
-    """ Telegram Bot handler funcation. """
+    """Telegram Bot handler function."""
+    user_id = msg["chat"]["id"]
+    msg_id = msg["message_id"]
 
-    user_id = msg["chat"]["id"] #* Get chat ID.
-    msg_id = msg["message_id"] #* Get message ID.
-
-    if ("photo" in msg.keys()): #* Check if the received data is really a file or something.
-        media_id = msg["photo"][-1]["file_id"] #* Get file ID for downloading,
-        file_name = "./temp/{}.jpg".format(media_id) #* Generate a name for saving file based on file ID.
-
-    elif ("document" in msg.keys() and (msg["document"]["mime_type"] == "image/png" or msg["document"]["mime_type"] == "image/jpeg")): #* Check if the received data is really a file or something.
-        media_id = msg["document"]["file_id"] #* Get file ID for downloading.
-        if msg["document"]["mime_type"] == "image/png": #* Check that the image format [jpeg or png].
-            file_name = "./temp/{}.png".format(media_id) #* Generate a name for saving file based on file ID and image format.
-
-        elif msg["document"]["mime_type"] == "image/jpeg": #* Check that the image format [jpeg or png].
-            file_name = "./temp/{}.jpg".format(media_id) #* Generate a name for saving file based on file ID and image format.
-
-
+    if "forward_from_chat" in msg and "photo" in msg:
+        # Forwarded image from channel with caption
+        media_id = msg["photo"][-1]["file_id"]
+        caption = msg.get("caption", None)
+        send_watermarked_image(user_id, media_id, msg_id, caption)
+    elif "photo" in msg.keys():
+        # Regular image from user
+        media_id = msg["photo"][-1]["file_id"]
+        send_watermarked_image(user_id, media_id, msg_id)
+    elif "text" in msg and msg["text"].lower() == "/start":
+        # User started the bot, send welcome message
+        send_welcome_message(user_id)
+    elif "text" in msg and msg["text"].lower() == "/total":
+        # User requested total statistics
+        send_total_stats(user_id)
     else:
-        bot.sendMessage(chat_id=user_id, text="message or file not supported", reply_to_message_id=msg_id) #* Sending a message that the data sent is not an image.
-        return 0 #* Return 0 and exit from funcation.
+        bot.sendMessage(chat_id=user_id, text="Unsupported message type", reply_to_message_id=msg_id)
+        return 0
 
 
-    bot.download_file(file_id=media_id, dest=file_name) #* Download file from Telegram server.
-    img = ImageProcessor(file_name) #* Initialization image processing,
-    img.add_watermark() #* add watermark to picture.
-
-    if "document" in msg.keys(): #* Check that the picture should be sent as a file or photo.
-        bot.sendDocument(chat_id=user_id, document=open(img.get_output_name(), "rb"), reply_to_message_id=msg_id) #* Send file to client.
-
-    else:
-        bot.sendPhoto(chat_id=user_id, photo=open(img.get_output_name(), "rb"), reply_to_message_id=msg_id) #* Send photo to client.
-
-
-
-if __name__ == "__main__": #* Check to see it is entered as a library.
-    if ! os.path.isdir("temp"):
+if __name__ == "__main__":
+    if not os.path.isdir("temp"):
         os.mkdir("temp")
 
     try:
-        me = bot.getMe() #* Get information about the robot.
+        me = bot.getMe()
     except telepot.exception.UnauthorizedError:
-        print(Fore.RED+"UnauthorizedError"+Fore.RESET)
+        print(Fore.RED + "UnauthorizedError" + Fore.RESET)
         sys.exit(1)
 
-    """ Print information"""
-
     for i in me.keys():
-        print(Fore.MAGENTA+"\t{}: {}{}".format(i, Fore.LIGHTBLUE_EX ,me[i])+Fore.RESET)
+        print(Fore.MAGENTA + "\t{}: {}{}".format(i, Fore.LIGHTBLUE_EX, me[i]) + Fore.RESET)
 
-    telepot.loop.MessageLoop(bot, robot_handler).run_as_thread() #! Run a robot loop to receive and process messages and execute them as threads. Do not change it
+    telepot.loop.MessageLoop(bot, robot_handler).run_as_thread()
 
-    print (Fore.CYAN+"\nCtrl+C for shutdown..."+Fore.RESET)
+    print(Fore.CYAN + "\nCtrl+C for shutdown..." + Fore.RESET)
 
     try:
         while 1:
-            for file in os.scandir("./temp"):
-                os.remove(file.path)
-            time.sleep(18000) #! Sleep for 5h.
-
-    except KeyboardInterrupt: #* Prevent error when receiving Interrupt signal.
-        sys.exit("\n") #* Print a new line and exit from script.
-
+            time.sleep(18000)
+    except KeyboardInterrupt:
+        sys.exit("\n")
