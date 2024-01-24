@@ -57,7 +57,7 @@ class ImageProcessor():
 
         # Add watermark with 50% opacity
         watermark = self.logoIm.copy()
-        alpha = ImageEnhance.Brightness(watermark.split()[3]).enhance(0.5)
+        alpha = ImageEnhance.Brightness(watermark.split()[3]).enhance(0.7)
         watermark.putalpha(alpha)
         self.im.paste(watermark, seg, watermark)
 
