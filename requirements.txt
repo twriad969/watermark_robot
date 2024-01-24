@@ -1,4 +1,4 @@
 pillow==8.4.0
-python-telegram-bot==19.11
+python-telegram-bot
 colorama==0.4.4
 tqdm==4.62.3
