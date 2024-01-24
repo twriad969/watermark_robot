@@ -4,19 +4,23 @@
 import sys
 import time
 import os
-import telepot
+telepot
 import telepot.loop
 from colorama import (Fore, init)
 from PIL import Image, ImageEnhance
 from io import BytesIO
 from tqdm import tqdm
 from datetime import datetime
+from dotenv import load_dotenv
+
+# Load environment variables from .env
+load_dotenv()
 
 init()
 
 print(Fore.GREEN + "Starting ...\n" + Fore.RESET)
-api = "6663409312:AAEkgkH7nK00cfjYHZhLQXGcm85DJy74yqI"
-bot = telepot.Bot(api)
+api_key = os.getenv("TELEGRAM_API_KEY")
+bot = telepot.Bot(api_key)
 
 # Dictionary to store processed image count for each day
 stats = {}
