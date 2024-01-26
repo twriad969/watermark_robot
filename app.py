@@ -1,7 +1,9 @@
 import os
 from telegram import Update
-from telegram.ext import Updater, CommandHandler, MessageHandler, CallbackContext
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
 from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip
+
+from queue import Queue  # Import Queue
 
 TOKEN = "6945477074:AAHyfacl3SVW5AwDa7W5S3rbcnLm6oIQRX0"
 
@@ -45,8 +47,7 @@ def unknown(update: Update, context: CallbackContext) -> None:
     update.message.reply_text("Sorry, I didn't understand that command.")
 
 def main() -> None:
-    updater = Updater(TOKEN)
-
+    updater = Updater(TOKEN, use_context=True)  # Update: added use_context=True
     dp = updater.dispatcher
 
     # Register handlers
@@ -54,8 +55,10 @@ def main() -> None:
     dp.add_handler(MessageHandler(Filters.video, handle_video))
     dp.add_handler(MessageHandler(Filters.command, unknown))
 
+    # Start the Bot
     updater.start_polling()
 
+    # Run the bot until the user presses Ctrl-C
     updater.idle()
 
 if __name__ == '__main__':
