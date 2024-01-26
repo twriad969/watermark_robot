@@ -1,167 +1,62 @@
-#!/usr/bin/python3
-# Watermark Telegram Bot by uidops
-
-import sys
-import time
 import os
-import telepot
-import telepot.loop
-from colorama import (Fore, init)
-from PIL import Image, ImageEnhance
-from io import BytesIO
-from tqdm import tqdm
-from datetime import datetime
-from dotenv import load_dotenv
+from telegram import Update
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
+from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip
 
-# Load environment variables from .env
-load_dotenv()
+TOKEN = "6945477074:AAHyfacl3SVW5AwDa7W5S3rbcnLm6oIQRX0"
 
-init()
+# Define a function to add watermark to the video
+def add_watermark(video_path, output_path, watermark_text):
+    clip = VideoFileClip(video_path)
+    txt_clip = TextClip(watermark_text, fontsize=70, color='white', bg_color='black')
+    txt_clip = txt_clip.set_pos('center').set_duration(clip.duration)
+    video_with_watermark = CompositeVideoClip([clip, txt_clip])
+    video_with_watermark.write_videofile(output_path, codec='libx264', audio_codec='aac')
+    return output_path
 
-print(Fore.GREEN + "Starting ...\n" + Fore.RESET)
-api_key = os.getenv("TELEGRAM_API_KEY")
-bot = telepot.Bot(api_key)
+# Handler for /start command
+def start(update: Update, context: CallbackContext) -> None:
+    update.message.reply_text('Hi! I am your video watermark bot. Send me a video, and I will add a watermark to it.')
 
-# Dictionary to store processed image count for each day
-stats = {}
+# Handler for video messages
+def handle_video(update: Update, context: CallbackContext) -> None:
+    chat_id = update.message.chat_id
+    video_id = update.message.video.file_id
+    video_path = f"{chat_id}.mp4"
+    watermark_text = "Your Watermark Here"
+    output_path = f"{chat_id}_watermarked.mp4"
 
+    # Download the video
+    video_file = context.bot.get_file(video_id)
+    video_file.download(video_path)
 
-class ImageProcessor():
-    """Image processor class for watermark handling."""
+    # Add watermark to the video
+    add_watermark(video_path, output_path, watermark_text)
 
-    def __init__(self, file):
-        """Initialization method."""
-        self.file_name_origin = file
-        self.logo_file = "logo.png"
-        self.file_name = None  # Initialize file_name attribute
+    # Send the watermarked video back to the user
+    context.bot.send_video(chat_id, video=open(output_path, 'rb'))
 
-        self.logoIm = Image.open(self.logo_file).convert("RGBA")
-        self.logo_width, self.logo_height = self.logoIm.size
+    # Cleanup - delete temporary files
+    os.remove(video_path)
+    os.remove(output_path)
 
-        self.im = Image.open(self.file_name_origin)
-        self.width, self.height = self.im.size
+# Handler for unknown commands
+def unknown(update: Update, context: CallbackContext) -> None:
+    update.message.reply_text("Sorry, I didn't understand that command.")
 
-        self.progress = 0
+def main() -> None:
+    updater = Updater(TOKEN)
 
-    def add_watermark(self):
-        """A method for adding a watermark to a picture."""
-        total_pixels = self.width * self.height
-        processed_pixels = 0
+    dp = updater.dispatcher
 
-        for x in tqdm(range(self.width), desc="Processing image", unit="pixel"):
-            for y in range(self.height):
-                # Your image processing logic here
-                processed_pixels += 1
-                self.progress = processed_pixels / total_pixels
+    # Register handlers
+    dp.add_handler(CommandHandler("start", start))
+    dp.add_handler(MessageHandler(Filters.video, handle_video))
+    dp.add_handler(MessageHandler(Filters.command, unknown))
 
-        # Move watermark to center
-        center_x = (self.width - self.logo_width) // 2
-        center_y = (self.height - self.logo_height) // 2
-        seg = (center_x, center_y)
+    updater.start_polling()
 
-        # Add watermark with 50% opacity
-        watermark = self.logoIm.copy()
-        alpha = ImageEnhance.Brightness(watermark.split()[3]).enhance(0.7)
-        watermark.putalpha(alpha)
-        self.im.paste(watermark, seg, watermark)
+    updater.idle()
 
-        self.file_name = "{}_logo.{}".format(".".join(self.file_name_origin.split(".")[:-1]),
-                                            self.file_name_origin.split(".")[-1])
-
-        self.im.save(self.file_name)  # Save image to a file for sharing
-
-    def get_output_name(self):
-        """Returns the file name."""
-        return self.file_name
-
-
-def process_image(media_id, file_name):
-    bot.download_file(file_id=media_id, dest=file_name)
-    img = ImageProcessor(file_name)
-    img.add_watermark()
-    return img
-
-
-def send_watermarked_image(chat_id, media_id, msg_id, caption=None):
-    # To support sending the caption with the watermarked photo,
-    # we download the original photo as bytes and send it as a photo.
-    file_name = "./temp/{}.jpg".format(media_id)
-    img = process_image(media_id, file_name)
-
-    # Convert the watermarked image to bytes
-    output = BytesIO()
-    img.im.save(output, format='JPEG')
-    output.seek(0)
-
-    if caption:
-        # Sending photo with caption
-        bot.sendPhoto(chat_id=chat_id, photo=output, caption=caption,
-                      reply_to_message_id=msg_id)
-    else:
-        # Sending photo without caption
-        bot.sendPhoto(chat_id=chat_id, photo=output, reply_to_message_id=msg_id)
-
-    # Update statistics
-    date_str = datetime.today().strftime('%Y-%m-%d')
-    stats[date_str] = stats.get(date_str, 0) + 1
-
-
-def send_total_stats(chat_id):
-    # Send statistics of processed images for each day
-    total_stats = "\n".join([f"*{date}:* {count} 😊" for date, count in stats.items()])
-    bot.sendMessage(chat_id=chat_id, text="*Total processed images:* \n" + total_stats, parse_mode="Markdown")
-
-
-def send_welcome_message(chat_id):
-    welcome_message = "Welcome to the Image Watermark Bot!\n\n" \
-                      "Send me images, and I will add a watermark to them for you."
-    bot.sendMessage(chat_id=chat_id, text=welcome_message)
-
-
-def robot_handler(msg):
-    """Telegram Bot handler function."""
-    user_id = msg["chat"]["id"]
-    msg_id = msg["message_id"]
-
-    if "forward_from_chat" in msg and "photo" in msg:
-        # Forwarded image from channel with caption
-        media_id = msg["photo"][-1]["file_id"]
-        caption = msg.get("caption", None)
-        send_watermarked_image(user_id, media_id, msg_id, caption)
-    elif "photo" in msg.keys():
-        # Regular image from user
-        media_id = msg["photo"][-1]["file_id"]
-        send_watermarked_image(user_id, media_id, msg_id)
-    elif "text" in msg and msg["text"].lower() == "/start":
-        # User started the bot, send welcome message
-        send_welcome_message(user_id)
-    elif "text" in msg and msg["text"].lower() == "/total":
-        # User requested total statistics
-        send_total_stats(user_id)
-    else:
-        bot.sendMessage(chat_id=user_id, text="Unsupported message type", reply_to_message_id=msg_id)
-        return 0
-
-
-if __name__ == "__main__":
-    if not os.path.isdir("temp"):
-        os.mkdir("temp")
-
-    try:
-        me = bot.getMe()
-    except telepot.exception.UnauthorizedError:
-        print(Fore.RED + "UnauthorizedError" + Fore.RESET)
-        sys.exit(1)
-
-    for i in me.keys():
-        print(Fore.MAGENTA + "\t{}: {}{}".format(i, Fore.LIGHTBLUE_EX, me[i]) + Fore.RESET)
-
-    telepot.loop.MessageLoop(bot, robot_handler).run_as_thread()
-
-    print(Fore.CYAN + "\nCtrl+C for shutdown..." + Fore.RESET)
-
-    try:
-        while 1:
-            time.sleep(18000)
-    except KeyboardInterrupt:
-        sys.exit("\n")
+if __name__ == '__main__':
+    main()
