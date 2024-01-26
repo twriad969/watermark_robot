@@ -1,6 +1,6 @@
 import os
 from telegram import Update
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
+from telegram.ext import Updater, CommandHandler, MessageHandler, CallbackContext
 from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip
 
 TOKEN = "6945477074:AAHyfacl3SVW5AwDa7W5S3rbcnLm6oIQRX0"
